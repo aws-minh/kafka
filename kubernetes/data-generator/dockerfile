@@ -1,0 +1,16 @@
+# Use Python base image
+FROM python:3.10
+
+# Set the working directory in the container
+WORKDIR /app
+
+#Create Output folder
+RUN mkdir /output
+# Copy the Python script into the container
+COPY data-generator.py .
+
+# Install dependencies
+RUN pip install --no-cache-dir jsonschema
+
+# Run the Python script
+CMD ["python3", "data-generator.py"]
