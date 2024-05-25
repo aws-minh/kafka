@@ -1,4 +1,5 @@
 from confluent_kafka import Producer
+import time
 import random
 import json
 from datetime import datetime, timedelta
@@ -13,7 +14,7 @@ def read_config():
                 parameter, value = line.strip().split('=', 1)
                 config[parameter] = value.strip()
     return config
-
+num_samples = 1000
 def generate_sample_data(num_samples):
     categories = ["Electronics", "Clothing", "Books", "Home"]
     products = {
@@ -65,7 +66,7 @@ def main():
         value = json.dumps(record)
         producer.produce(topic, key=key, value=value)
         print(f"Produced message to topic {topic}: key = {key:12} value = {value}")
-    
+        time.sleep(1)
     # Send any outstanding or buffered messages to the Kafka broker
     producer.flush()
 
