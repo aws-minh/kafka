@@ -1,49 +1,45 @@
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col
-from pyspark.sql.types import StructType, StringType, IntegerType, DoubleType
+from confluent_kafka import Consumer
 
-spark = SparkSession.builder \
-    .appName("SalesDataProcessor") \
-    .config("spark.driver.extraClassPath", '/driver/mssql-jdbc-12.6.2.jre8.jar;/driver/mssql-jdbc-12.6.2.jre11.jar') \
-    .getOrCreate()
 
-# Kafka credentials
-bootstrap_servers = "pkc-56d1g.eastus.azure.confluent.cloud:9092"
-security_protocol = "SASL_SSL"
-sasl_mechanism = "PLAIN"
-sasl_plain_username = "2GQZHXZS45VQ7PJO"
-sasl_plain_password = "ZCpmF1goGE4bQH7YaZnJnTzQQTzAyGKBr7aMciru8IozDwN6Z/OgnyXmjIQaA0L2"
-# Define schema for the data
-schema = StructType() \
-    .add("customer_id", IntegerType()) \
-    .add("day", IntegerType()) \
-    .add("amount", DoubleType()) \
-    .add("quantity", IntegerType()) \
-    .add("sales_item", StringType()) \
-    .add("product", StringType()) \
-    .add("category", StringType())
+def read_config():
+    # Reads the client configuration from client.properties
+    # and returns it as a key-value map
+    config = {}
+    with open("client.properties") as fh:
+        for line in fh:
+            line = line.strip()
+            if len(line) != 0 and line[0] != "#":
+                parameter, value = line.strip().split('=', 1)
+                config[parameter] = value.strip()
+    return config
 
-# Read streaming data from Kafka
-sales_data_df = spark \
-    .readStream \
-    .format("kafka") \
-    .option("kafka.bootstrap.servers", bootstrap_servers) \
-    .option("security.protocol", security_protocol) \
-    .option("sasl.mechanism", sasl_mechanism) \
-    .option("sasl.username", sasl_plain_username) \
-    .option("sasl.password", sasl_plain_password) \
-    .option("subscribe", "sale") \
-    .load() \
-    .select(from_json(col("value").cast("string"), schema).alias("data")) \
-    .select("data.*")
 
-# Define the connection string for Azure SQL Server
-sql_server_connection_string = "jdbc:sqlserver://mn-datafactory.database.windows.net:1433;database=kafkaDb;user=adsql@mn-datafactory;password={your_password_here};encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30;"
+def main():
+    config = read_config()
+    topic = "sales"
+  
+    # Sets the consumer group ID and offset
+    config["group.id"] = "python-group-1"
+    config["auto.offset.reset"] = "earliest"
 
-# Write streaming data to Azure SQL Server
-query = sales_data_df \
-    .writeStream \
-    .foreachBatch(lambda df, epoch_id: df.write.jdbc(url=sql_server_connection_string, table="sales", mode="append")) \
-    .start()
+    # Creates a new consumer and subscribes to your topic
+    consumer = Consumer(config)
+    consumer.subscribe([topic])
+  
+    try:
+        while True:
+            # Consumer polls the topic and prints any incoming messages
+            msg = consumer.poll(1.0)
+            if msg is not None and msg.error() is None:
+                key = msg.key().decode("utf-8")
+                value = msg.value().decode("utf-8")
+                print(f"Consumed message from topic {topic}: key = {key:12} value = {value:12}")
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # Closes the consumer connection
+        consumer.close()
 
-query.awaitTermination()
+
+if __name__ == "__main__":
+    main()

@@ -1,15 +1,20 @@
-# Use Python base image
-FROM python:3.10
+# Use an official Python runtime as a parent image
+FROM python:3.10-slim
 
 # Set the working directory in the container
 WORKDIR /app
-RUN apt-get update && \
-    apt-get install -y default-jre && \
-    apt-get clean;
-#Create Output folder
-RUN pip install pyspark
-# Copy the Python script into the container
-COPY consumer.py /app/consumer.py
-COPY driver /app/driver
-# Run the Python script
-#CMD ["python3", "consumer.py"]
+
+# Copy the current directory contents into the container at /app
+COPY . /app
+
+# Install any needed packages specified in requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the client.properties file into the container
+COPY client.properties /app/client.properties
+
+# Make port 9092 available to the world outside this container
+EXPOSE 9092
+
+# Run consumer.py when the container launches
+CMD ["python", "consumer.py"]

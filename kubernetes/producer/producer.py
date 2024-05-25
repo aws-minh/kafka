@@ -1,42 +1,73 @@
-from kafka import KafkaProducer
-import json
-import time
+from confluent_kafka import Producer
 import random
+import json
+from datetime import datetime, timedelta
 
-# Kafka credentials
-bootstrap_servers = "pkc-56d1g.eastus.azure.confluent.cloud:9092"
-security_protocol = "SASL_SSL"
-sasl_mechanism = "PLAIN"
-sasl_plain_username = "2GQZHXZS45VQ7PJO"
-sasl_plain_password = "ZCpmF1goGE4bQH7YaZnJnTzQQTzAyGKBr7aMciru8IozDwN6Z/OgnyXmjIQaA0L2"
+def read_config():
+    # Reads the client configuration from client.properties and returns it as a key-value map
+    config = {}
+    with open("client.properties") as fh:
+        for line in fh:
+            line = line.strip()
+            if len(line) != 0 and line[0] != "#":
+                parameter, value = line.strip().split('=', 1)
+                config[parameter] = value.strip()
+    return config
 
-def generate_sales_data(customer_id, day):
-    amount = round(random.uniform(10, 1000), 2)
-    quantity = random.randint(1, 10)
-    # Sample sales items, products, and categories
-    sales_items = ["item1", "item2", "item3"]
-    products = ["product1", "product2", "product3"]
-    categories = ["category1", "category2", "category3"]
-    sales_item = random.choice(sales_items)
-    product = random.choice(products)
-    category = random.choice(categories)
-    return {"customer_id": customer_id, "day": day, "amount": amount, "quantity": quantity, "sales_item": sales_item, "product": product, "category": category}
+def generate_sample_data(num_samples):
+    categories = ["Electronics", "Clothing", "Books", "Home"]
+    products = {
+        "Electronics": ["Smartphone", "Laptop", "Headphones", "Camera"],
+        "Clothing": ["Shirt", "Jeans", "Jacket", "Shoes"],
+        "Books": ["Fiction", "Non-Fiction", "Comics", "Textbook"],
+        "Home": ["Furniture", "Decor", "Kitchenware", "Bedding"]
+    }
+    
+    data = []
+    base_date = datetime.now()
+
+    for i in range(num_samples):
+        customer_id = random.randint(1000, 9999)
+        day = (base_date - timedelta(days=i)).strftime('%Y-%m-%d')
+        amount = round(random.uniform(5.0, 500.0), 2)
+        quantity = random.randint(1, 10)
+        category = random.choice(categories)
+        product = random.choice(products[category])
+        sales_item = f"{category}_{product}"
+
+        record = {
+            "customer_id": customer_id,
+            "day": day,
+            "amount": amount,
+            "quantity": quantity,
+            "sales_item": sales_item,
+            "product": product,
+            "category": category
+        }
+        
+        data.append(record)
+    
+    return data
 
 def main():
-    producer = KafkaProducer(bootstrap_servers=bootstrap_servers,
-                             security_protocol=security_protocol,
-                             sasl_mechanism=sasl_mechanism,
-                             sasl_plain_username=sasl_plain_username,
-                             sasl_plain_password=sasl_plain_password,
-                             value_serializer=lambda v: json.dumps(v).encode('utf-8'))
-
-    for day in range(1, 366):
-        for customer_id in range(1, 101):
-            sales_data = generate_sales_data(customer_id, day)
-            producer.send('sale', value=sales_data)
-            time.sleep(0.1)  # Adjust sleep time as needed
-
-    producer.close()
+    config = read_config()
+    topic = "sales"
+    
+    # Creates a new producer instance
+    producer = Producer(config)
+    
+    # Generate sample data
+    sample_data = generate_sample_data(100)
+    
+    # Produce sample messages
+    for record in sample_data:
+        key = str(record["customer_id"])
+        value = json.dumps(record)
+        producer.produce(topic, key=key, value=value)
+        print(f"Produced message to topic {topic}: key = {key:12} value = {value}")
+    
+    # Send any outstanding or buffered messages to the Kafka broker
+    producer.flush()
 
 if __name__ == "__main__":
     main()
