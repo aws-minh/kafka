@@ -14,8 +14,8 @@ def read_config():
                 parameter, value = line.strip().split('=', 1)
                 config[parameter] = value.strip()
     return config
-num_samples = 1000
-def generate_sample_data(num_samples):
+
+def generate_sample_data():
     categories = ["Electronics", "Clothing", "Books", "Home"]
     products = {
         "Electronics": ["Smartphone", "Laptop", "Headphones", "Camera"],
@@ -27,9 +27,9 @@ def generate_sample_data(num_samples):
     data = []
     base_date = datetime.now()
 
-    for i in range(num_samples):
+    for _ in range(100):
         customer_id = random.randint(1000, 9999)
-        day = (base_date - timedelta(days=i)).strftime('%Y-%m-%d')
+        day = base_date.strftime('%Y-%m-%d')
         amount = round(random.uniform(5.0, 500.0), 2)
         quantity = random.randint(1, 10)
         category = random.choice(categories)
@@ -57,18 +57,18 @@ def main():
     # Creates a new producer instance
     producer = Producer(config)
     
-    # Generate sample data
-    sample_data = generate_sample_data(100)
-    
-    # Produce sample messages
-    for record in sample_data:
-        key = str(record["customer_id"])
-        value = json.dumps(record)
-        producer.produce(topic, key=key, value=value)
-        print(f"Produced message to topic {topic}: key = {key:12} value = {value}")
+    # Continuously generate and produce sample messages
+    while True:
+        sample_data = generate_sample_data()
+        for record in sample_data:
+            key = str(record["customer_id"])
+            value = json.dumps(record)
+            producer.produce(topic, key=key, value=value)
+            print(f"Produced message to topic {topic}: key = {key:12} value = {value}")
+        # Send any outstanding or buffered messages to the Kafka broker
+        producer.flush()
+        # Pause for 1 second before generating the next batch of data
         time.sleep(1)
-    # Send any outstanding or buffered messages to the Kafka broker
-    producer.flush()
 
 if __name__ == "__main__":
     main()
