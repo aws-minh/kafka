@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spark-consumer
+  template:
+    metadata:
+      labels:
+        app: spark-consumer
+    spec:
+      containers:
+      - name: spark-consumer
+        image: cglvodoi97/consumer:latest
+        imagePullPolicy: IfNotPresent
+        resources:
+          requests:
+            cpu: "1"
+            memory: "2Gi"
