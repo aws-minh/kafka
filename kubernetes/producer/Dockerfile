@@ -1,28 +1,20 @@
-# Use the official Spark base image
-FROM apache/spark:3.5.1
-
-# Install necessary dependencies
-USER root
-
-RUN apt-get update && \
-    apt-get install -y curl apt-transport-https gnupg2 lsb-release && \
-    curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
-    apt-get update && \
-    apt install -y curl unixodbc odbcinst && \
-    wget https://packages.microsoft.com/ubuntu/20.04/prod/pool/main/m/msodbcsql17/msodbcsql17_17.10.1.1-1_amd64.deb && \
-    ACCEPT_EULA=Y dpkg --install msodbcsql17_17.10.1.1-1_amd64.deb && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# Use an official Python runtime as a parent image
+FROM python:3.10-slim
 
 # Set the working directory
-WORKDIR /opt/spark-apps
+WORKDIR /app
+RUN apt-get update && apt-get install curl -y;
+RUN curl \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Basic Q1JXTFdHTUNYTEJKR1g3NDpXZ0tRZWJxUkVWb1RRT2psWElBS0ViSFlkZnkya3R5YVZUYzZ2MXRsb1JWWkJPcml5RHJydlZOT2Q5OVYzVzBX" \
+  https://pkc-56d1g.eastus.azure.confluent.cloud:443/kafka/v3/clusters/lkc-3338qj/topics \
+  -d '{"topic_name":"sales"}'
+# Copy the current directory contents into the container at /app
+COPY . /app
 
-# Copy the Spark application script into the container
-COPY spark_producer.py /opt/spark-apps/
+# Install any needed packages specified in requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Add the necessary JAR files for Kafka
-ADD https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.1/spark-sql-kafka-0-10_2.12-3.5.1.jar /opt/spark/jars/
-ADD https://repo1.maven.org/maven2/org/apache/spark/spark-streaming-kafka-0-10-assembly_2.12/3.5.1/spark-streaming-kafka-0-10-assembly_2.12-3.5.1.jar /opt/spark/jars/
-
-# Set the entry point to run the Spark application
-ENTRYPOINT [ "/opt/spark/bin/spark-submit", "--packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1", "/opt/spark-apps/spark_producer.py" ]
+# Run the script
+CMD ["python3", "producer.py"]
