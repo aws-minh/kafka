@@ -16,24 +16,26 @@ def read_config():
 
 def main():
     config = read_config()
-    topic = "sales"
+    customer_topic = "customer"
+    sales_topic = "sales"
   
     # Sets the consumer group ID and offset
     config["group.id"] = "python-group-1"
     config["auto.offset.reset"] = "earliest"
 
-    # Creates a new consumer and subscribes to your topic
+    # Creates a new consumer and subscribes to both topics
     consumer = Consumer(config)
-    consumer.subscribe([topic])
+    consumer.subscribe([customer_topic, sales_topic])
   
     try:
         while True:
-            # Consumer polls the topic and prints any incoming messages
+            # Consumer polls the topics and prints any incoming messages
             msg = consumer.poll(1.0)
             if msg is not None and msg.error() is None:
+                topic = msg.topic()
                 key = msg.key().decode("utf-8")
                 value = msg.value().decode("utf-8")
-                print(f"Consumed message from topic {topic}: key = {key:12} value = {value:12}")
+                print(f"Consumed message from topic {topic}: key = {key}, value = {value}")
     except KeyboardInterrupt:
         pass
     finally:

@@ -5,7 +5,7 @@ metadata:
 spec:
   containers:
   - name: kafka-consumer-container
-    image: cglvodoi97/kafka-consumer:test
+    image: cglvodoi97/kafka-consumer:withcustomer
     imagePullPolicy: Always
     ports:
     - containerPort: 9092
