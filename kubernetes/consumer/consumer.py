@@ -1,45 +1,67 @@
-from confluent_kafka import Consumer
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import from_json, col
+from pyspark.sql.types import StructType, StringType, DoubleType, IntegerType
+# Function to read Kafka configuration from client.properties
+# Required connection configs for Kafka producer, consumer, and admin
+config = {"bootstrap.servers":"pkc-56d1g.eastus.azure.confluent.cloud:9092",
+"security.protocol":"SASL_SSL",
+"sasl.mechanisms":"PLAIN",
+"sasl.username":"CRWLWGMCXLBJGX74",
+"sasl.password":"WgKQebqREVoTQOjlXIAKEbHYdfy2ktyaVTc6v1tloRVZBOriyDrrvVNOd99V3W0W",
+"session.timeout.ms":"45000"}
+# Function to create Spark session
+def create_spark_session():
+    return SparkSession.builder \
+        .appName("KafkaConsumer") \
+        .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.2.0") \
+        .config("spark.driver.extraClassPath", '/driver/mssql-jdbc-12.6.2.jre8.jar;/driver/mssql-jdbc-12.6.2.jre11.jar') \
+        .getOrCreate()
 
+# Kafka configuration
+topic = "sales"
 
-def read_config():
-    # Reads the client configuration from client.properties
-    # and returns it as a key-value map
-    config = {}
-    with open("client.properties") as fh:
-        for line in fh:
-            line = line.strip()
-            if len(line) != 0 and line[0] != "#":
-                parameter, value = line.strip().split('=', 1)
-                config[parameter] = value.strip()
-    return config
+# Spark session
+spark = create_spark_session()
 
+# Schema for the incoming Kafka messages
+schema = StructType() \
+    .add("customer_id", IntegerType()) \
+    .add("day", StringType()) \
+    .add("amount", DoubleType()) \
+    .add("quantity", IntegerType()) \
+    .add("sales_item", StringType()) \
+    .add("product", StringType()) \
+    .add("category", StringType())
 
-def main():
-    config = read_config()
-    topic = "sales"
-  
-    # Sets the consumer group ID and offset
-    config["group.id"] = "python-group-1"
-    config["auto.offset.reset"] = "earliest"
+# Read data from Kafka into a DataFrame
+kafka_df = spark \
+    .readStream \
+    .format("kafka") \
+    .option("kafka.bootstrap.servers", config["bootstrap.servers"]) \
+    .option("kafka.security.protocol", config["security.protocol"]) \
+    .option("kafka.sasl.mechanisms", config["sasl.mechanisms"]) \
+    .option("kafka.sasl.username", config["sasl.username"]) \
+    .option("kafka.sasl.password", config["sasl.password"]) \
+    .option("kafka.session.timeout.ms", config["session.timeout.ms"])\
+    .option("subscribe", topic) \
+    .load()
 
-    # Creates a new consumer and subscribes to your topic
-    consumer = Consumer(config)
-    consumer.subscribe([topic])
-  
-    try:
-        while True:
-            # Consumer polls the topic and prints any incoming messages
-            msg = consumer.poll(1.0)
-            if msg is not None and msg.error() is None:
-                key = msg.key().decode("utf-8")
-                value = msg.value().decode("utf-8")
-                print(f"Consumed message from topic {topic}: key = {key:12} value = {value:12}")
-    except KeyboardInterrupt:
-        pass
-    finally:
-        # Closes the consumer connection
-        consumer.close()
+# Deserialize JSON data from Kafka
+parsed_df = kafka_df \
+    .selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)") \
+    .select(from_json(col("value").cast("string"), schema).alias("data")) \
+    .select("data.*")
 
+# Write the streaming DataFrame to SQL Server
+query = parsed_df \
+    .writeStream \
+    .format("jdbc") \
+    .option("url", "jdbc:sqlserver://mn-datafactory.database.windows.net:1433;database=kafkaDb;user=adsql@mn-datafactory;password=your_password_here;encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30;") \
+    .option("dbtable", "kafka_data") \
+    .option("user", "adsql@mn-datafactory") \
+    .option("password", "Quynh2904") \
+    .option("driver", "com.microsoft.sqlserver.jdbc.SQLServerDriver") \
+    .start()
 
-if __name__ == "__main__":
-    main()
+# Await termination
+query.awaitTermination()

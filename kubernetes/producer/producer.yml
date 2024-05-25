@@ -5,7 +5,7 @@ metadata:
 spec:
   containers:
   - name: kafka-producer-container
-    image: cglvodoi97/kafka-producer:test
+    image: cglvodoi97/kafka-producer:tosql
     imagePullPolicy: Always
     ports:
     - containerPort: 9092

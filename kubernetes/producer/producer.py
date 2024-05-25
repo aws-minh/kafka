@@ -1,73 +1,64 @@
+from pyspark import SparkContext
+from pyspark.streaming import StreamingContext
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import *
 from confluent_kafka import Producer
-import random
+import time
 import json
-from datetime import datetime, timedelta
+config = {"bootstrap.servers":"pkc-56d1g.eastus.azure.confluent.cloud:9092",
+"security.protocol":"SASL_SSL",
+"sasl.mechanisms":"PLAIN",
+"sasl.username":"CRWLWGMCXLBJGX74",
+"sasl.password":"WgKQebqREVoTQOjlXIAKEbHYdfy2ktyaVTc6v1tloRVZBOriyDrrvVNOd99V3W0W",
+"session.timeout.ms":"45000"}
+def generate_sample_data():
+    # Generate sample data for 100 data points per day
+    for _ in range(100):
+        customer_id = 1000  # Sample customer ID
+        day = time.strftime("%Y-%m-%d")  # Current day
+        amount = round(random.uniform(10, 1000), 2)  # Random amount
+        quantity = random.randint(1, 10)  # Random quantity
+        sales_item = "SampleItem"  # Sample sales item
+        product = "SampleProduct"  # Sample product
+        category = "SampleCategory"  # Sample category
+        yield {"customer_id": customer_id, "day": day, "amount": amount, "quantity": quantity,
+               "sales_item": sales_item, "product": product, "category": category}
 
-def read_config():
-    # Reads the client configuration from client.properties and returns it as a key-value map
-    config = {}
-    with open("client.properties") as fh:
-        for line in fh:
-            line = line.strip()
-            if len(line) != 0 and line[0] != "#":
-                parameter, value = line.strip().split('=', 1)
-                config[parameter] = value.strip()
-    return config
-
-def generate_sample_data(num_samples):
-    categories = ["Electronics", "Clothing", "Books", "Home"]
-    products = {
-        "Electronics": ["Smartphone", "Laptop", "Headphones", "Camera"],
-        "Clothing": ["Shirt", "Jeans", "Jacket", "Shoes"],
-        "Books": ["Fiction", "Non-Fiction", "Comics", "Textbook"],
-        "Home": ["Furniture", "Decor", "Kitchenware", "Bedding"]
-    }
-    
-    data = []
-    base_date = datetime.now()
-
-    for i in range(num_samples):
-        customer_id = random.randint(1000, 9999)
-        day = (base_date - timedelta(days=i)).strftime('%Y-%m-%d')
-        amount = round(random.uniform(5.0, 500.0), 2)
-        quantity = random.randint(1, 10)
-        category = random.choice(categories)
-        product = random.choice(products[category])
-        sales_item = f"{category}_{product}"
-
-        record = {
-            "customer_id": customer_id,
-            "day": day,
-            "amount": amount,
-            "quantity": quantity,
-            "sales_item": sales_item,
-            "product": product,
-            "category": category
-        }
-        
-        data.append(record)
-    
-    return data
-
-def main():
-    config = read_config()
-    topic = "sales"
-    
-    # Creates a new producer instance
+def send_to_kafka(partition):
     producer = Producer(config)
-    
-    # Generate sample data
-    sample_data = generate_sample_data(100)
-    
-    # Produce sample messages
-    for record in sample_data:
-        key = str(record["customer_id"])
-        value = json.dumps(record)
-        producer.produce(topic, key=key, value=value)
-        print(f"Produced message to topic {topic}: key = {key:12} value = {value}")
-    
-    # Send any outstanding or buffered messages to the Kafka broker
+    for record in partition:
+        producer.produce(topic, key=None, value=json.dumps(record))
     producer.flush()
 
 if __name__ == "__main__":
-    main()
+    # Read Kafka producer configuration from client.properties
+    topic = "sales"
+
+    # Initialize Spark
+    spark = SparkSession.builder \
+        .appName("SalesProducer") \
+        .config("spark.jars.packages", "spark-sql-kafka-0-10_2.12-3.2.1.jar") \
+        .config("kafka.bootstrap.servers", config["bootstrap.servers"]) \
+        .config("kafka.security.protocol", config["security.protocol"]) \
+        .config("kafka.sasl.mechanisms", config["sasl.mechanisms"]) \
+        .config("kafka.sasl.username", config["sasl.username"]) \
+        .config("kafka.sasl.password", config["sasl.password"]) \
+        .config("kafka.session.timeout.ms", config["session.timeout.ms"])\
+        .config("subscribe", topic) \
+        .getOrCreate()
+
+    sc = spark.sparkContext
+    ssc = StreamingContext(sc, 10)  # 10 second batch interval
+
+    # Generate sample data RDD
+    sample_data = sc.parallelize(generate_sample_data())
+
+    # Convert RDD to DataFrame
+    sample_df = spark.read.json(sample_data)
+
+    # Write DataFrame to Kafka
+    sample_df.foreachPartition(send_to_kafka)
+
+    # Start streaming context
+    ssc.start()
+    ssc.awaitTermination()
